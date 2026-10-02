@@ -1,5 +1,3 @@
-"""Percorsi, dataset, modelli, prompt e utilità condivise dagli script."""
-
 import json
 import re
 import socket
@@ -10,36 +8,27 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 DATASETS_DIR = ROOT / "datasets"
-RESULTS_DIR = ROOT / "results"  # letto da compare.py
-ADAPTERS_DIR = ROOT / "adapters"
+RESULTS_DIR = ROOT / "results"
 
 OMLX_SETTINGS = Path.home() / ".omlx/settings.json"
 OMLX_DEFAULT_MODELS = Path.home() / ".omlx/models"
 
 PROMPT_TYPES = ("minimal", "full")
-TASKS = ("classification",)  # unico compito supportato per ora
+TASKS = ("classification",)
 
 DATASET_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
-# --- dataset -----------------------------------------------------------------
-
 @dataclass
 class Dataset:
-    """Un dataset scaricato in datasets/<name>/."""
-
     name: str
     dir: Path
     manifest: dict
     labels: list[str]
     prompts: dict[str, str]
 
-    @property
-    def raw_dir(self) -> Path:
-        return self.dir / "raw"
-
     def split(self, name: str) -> list[dict]:
-        return read_jsonl(self.raw_dir / f"{name}.jsonl")
+        return read_jsonl(self.dir / "raw" / f"{name}.jsonl")
 
     def system_prompt(self, kind: str) -> str:
         if kind not in PROMPT_TYPES:
@@ -79,16 +68,10 @@ def build_messages(text: str, system: str) -> list[dict]:
 
 
 def normalize(answer: str) -> str:
-    """Pulizia minima: spazi, virgolette, backtick e punto finale, poi minuscolo.
-
-    Va applicata sia alla risposta sia all'etichetta attesa. Non corregge altro: una
-    risposta come "card arrival" (senza underscore) resta non formattata, perché
-    l'obiettivo è misurare se il modello rispetta il formato.
-    """
+    # Deliberately minimal: "card arrival" must not match "card_arrival", since the
+    # format_ok metric measures whether the model follows the label format.
     return answer.strip().strip("`\"'").strip().rstrip(".").strip().lower()
 
-
-# --- modelli -----------------------------------------------------------------
 
 def omlx_settings() -> dict:
     try:
@@ -104,10 +87,9 @@ def omlx_model_dirs(settings: dict | None = None) -> list[Path]:
 
 
 def find_models(model_dirs: list[Path], max_depth: int = 3) -> dict[str, Path]:
-    """Mappa nome relativo (es. "mlx-community/Qwen2.5-0.5B-Instruct-4bit") -> cartella del modello.
+    """Relative name (e.g. "mlx-community/Qwen2.5-0.5B-Instruct-4bit") -> model folder.
 
-    Un modello è una cartella con config.json; come oMLX, si scende nelle sottocartelle
-    finché non se ne trova uno.
+    Like oMLX, any folder containing config.json is a model.
     """
     found: dict[str, Path] = {}
 
@@ -127,12 +109,7 @@ def find_models(model_dirs: list[Path], max_depth: int = 3) -> dict[str, Path]:
 
 
 def resolve_model(name: str, model_dirs: list[Path] | None = None) -> Path:
-    """Risolve --model in una cartella: percorso esistente, oppure nome di un modello installato in oMLX.
-
-    Il nome può essere quello della cartella foglia (l'id che oMLX espone, es.
-    "Qwen2.5-0.5B-Instruct-4bit") o il percorso relativo completo
-    ("mlx-community/Qwen2.5-0.5B-Instruct-4bit").
-    """
+    """Accepts a model folder, the full relative name, or the leaf folder name (the id oMLX exposes)."""
     path = Path(name).expanduser()
     if (path / "config.json").is_file():
         return path.resolve()
@@ -169,8 +146,6 @@ def warn_if_omlx_running(console) -> None:
                       "si divide fra le due copie. Con i modelli grandi conviene fermarlo (omlx stop).[/]")
 
 
-# --- adapter -----------------------------------------------------------------
-
 ADAPTER_MANIFEST = "manifest.json"
 
 
@@ -178,8 +153,6 @@ def read_adapter_manifest(adapter: Path) -> dict | None:
     f = adapter / ADAPTER_MANIFEST
     return json.loads(f.read_text()) if f.exists() else None
 
-
-# --- file --------------------------------------------------------------------
 
 def read_jsonl(path: Path) -> list[dict]:
     with path.open() as f:

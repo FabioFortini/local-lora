@@ -1,23 +1,3 @@
-"""Scarica un dataset di classificazione da Hugging Face e lo salva in datasets/<name>/.
-
-Uso:
-    ./download.sh --source mteb/banking77 --name banking77
-    ./download.sh --source dair-ai/emotion --name emotion
-    ./download.sh --source nyu-mll/glue --subset sst2 --name sst2
-
-Le colonne di testo e di etichetta vengono riconosciute da sole e mostrate a schermo;
-se la scelta è sbagliata si correggono con --text-column e --label-column.
-
-Produce:
-    datasets/<name>/manifest.json            sorgente, colonne, split, seed
-    datasets/<name>/labels.json              le etichette
-    datasets/<name>/prompts.yaml             i prompt minimal e full (modificabile, conservato salvo --overwrite)
-    datasets/<name>/raw/{train,valid,test}.jsonl   {"text", "label"}
-
-Gli split mancanti si ricavano dal train: prima il test, poi il validation. Il test non
-viene mai visto durante il training.
-"""
-
 import argparse
 import json
 import random
@@ -35,11 +15,10 @@ console = Console()
 LABEL_NAMES = ("label_text", "label", "labels", "intent", "category", "class", "target")
 TEXT_NAMES = ("text", "sentence", "content", "utterance", "query", "question", "review", "document")
 VALID_SPLITS = ("validation", "valid", "dev")
-MANY_LABELS = 200  # oltre questa soglia il prompt full diventa molto lungo
+MANY_LABELS = 200
 
 DEFAULT_PROMPTS = """\
-# Prompt di sistema per questo dataset. {labels} viene sostituito con l'elenco delle etichette,
-# una per riga. download.sh non lo sovrascrive (salvo --overwrite): modificalo liberamente.
+# {labels} is replaced with the label list, one per line. download.sh keeps edits unless --overwrite.
 minimal: >-
   Classify the text into its label.
   Answer with the label only.
@@ -103,11 +82,10 @@ def pick_text_column(features, label_column: str, override: str | None = None) -
 
 
 def label_order(features, label_column: str, splits: dict) -> list[str] | None:
-    """Ordine delle etichette, se il dataset ne definisce uno.
+    """Label order defined by the dataset, or None (caller sorts alphabetically).
 
-    Una ClassLabel porta con sé i nomi in ordine di id. Una colonna testuale "<x>_text"
-    accompagnata da una colonna intera "<x>" (come in mteb/banking77) si ordina per quell'id.
-    Senza nessuna delle due si restituisce None e l'ordine sarà alfabetico.
+    A ClassLabel carries names in id order; a "<x>_text" string column paired with an
+    integer "<x>" column (as in mteb/banking77) is ordered by that id.
     """
     feature = features[label_column]
     if isinstance(feature, ClassLabel):
@@ -119,14 +97,14 @@ def label_order(features, label_column: str, splits: dict) -> list[str] | None:
             for split in splits.values():
                 for i, label in zip(split[id_column], split[label_column]):
                     if id_to_label.setdefault(i, label) != label:
-                        return None  # la coppia id/testo non è 1:1
+                        return None
             if len(set(id_to_label.values())) == len(id_to_label):
                 return [id_to_label[i] for i in sorted(id_to_label)]
     return None
 
 
 def to_rows(split, text_column: str, label_column: str) -> tuple[list[dict], int]:
-    """Converte uno split in {"text", "label"}; scarta le righe senza testo o senza etichetta."""
+    """Rows without text or label are dropped (e.g. the unlabeled GLUE test split)."""
     feature = split.features[label_column]
     names = feature.names if isinstance(feature, ClassLabel) else None
     rows, dropped = [], 0
@@ -142,7 +120,7 @@ def to_rows(split, text_column: str, label_column: str) -> tuple[list[dict], int
 
 def assign_splits(train: list, valid: list | None, test: list | None,
                   valid_ratio: float, test_ratio: float, seed: int):
-    """Mescola il train e ne ricava gli split mancanti: prima il test, poi il validation."""
+    """Missing splits are carved from the shuffled train: test first, then validation."""
     train = list(train)
     random.Random(seed).shuffle(train)
     origin = {"train": "train", "valid": "valid", "test": "test"}
@@ -161,7 +139,7 @@ def assign_splits(train: list, valid: list | None, test: list | None,
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description="Scarica un dataset di classificazione da Hugging Face in datasets/<name>/.")
     parser.add_argument("--source", required=True, help="id del dataset su Hugging Face, es. mteb/banking77")
     parser.add_argument("--name", required=True, help="nome locale, usato poi come --dataset-name")
     parser.add_argument("--subset", default=None, help="configurazione del dataset, es. sst2 per nyu-mll/glue")
@@ -185,7 +163,7 @@ def main() -> None:
 
     try:
         ds = load_dataset(args.source, args.subset, revision=args.revision)
-    except Exception as e:  # datasets solleva tipi diversi per rete, nome, config e accesso
+    except Exception as e:  # datasets raises unrelated types for network, name, config and auth errors
         raise SystemExit(f"Download di {args.source} fallito: {e}")
 
     if "train" not in ds:

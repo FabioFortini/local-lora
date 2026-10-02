@@ -15,7 +15,7 @@ def make_model(path):
 def test_normalize_strips_punctuation_and_case():
     assert normalize('  "Card_Arrival." ') == "card_arrival"
     assert normalize("`positive`") == "positive"
-    assert normalize("card arrival") == "card arrival"  # nessuna correzione oltre la pulizia
+    assert normalize("card arrival") == "card arrival"
 
 
 def test_find_models_nested_like_omlx(tmp_path):

@@ -1,20 +1,3 @@
-"""Fine-tuning LoRA con mlx_lm di un modello installato in oMLX su un dataset scaricato.
-
-Uso:
-    ./fine-tune.sh --model Qwen2.5-0.5B-Instruct-4bit --dataset-name banking77 \\
-                   --config configs/lora-base.yaml --output adapters/qwen05-banking77
-
-Su un modello quantizzato (es. 4 bit) si tratta di QLoRA. Il config sceglie il prompt di
-training e la durata in epoche (vedi configs/lora-base.yaml); le epoche diventano iterazioni
-in base alla dimensione del train.
-
-Scrive in <output>/:
-    data/{train,valid}.jsonl   esempi in formato chat, generati con il prompt del config
-    train_config.yaml          configurazione completa passata a `mlx_lm lora`
-    manifest.json              modello, dataset e prompt usati, letto da evaluate.sh
-    adapters.safetensors       l'adapter finale (più i checkpoint intermedi)
-"""
-
 import argparse
 import json
 import math
@@ -48,14 +31,13 @@ DEFAULTS = {
 DURATION_KEYS = ("epochs", "iters")
 POSITIVE_INTS = ("batch_size", "max_seq_length", "steps_per_report", "steps_per_eval", "save_every", "iters")
 LORA_KEYS = ("rank", "scale", "dropout")
-# Chiavi di mlx_lm che lo script imposta da sé: nella sezione mlx_lm darebbero risultati ambigui.
+# Set by this script; allowing them under mlx_lm would make the config ambiguous.
 MANAGED_MLX_KEYS = {"model", "data", "adapter_path", "train", "test", "iters", "batch_size", "learning_rate",
                     "num_layers", "lora_parameters", "max_seq_length", "seed", "steps_per_report",
                     "steps_per_eval", "save_every", "val_batches"}
 
 
 def load_config(raw: dict | None) -> dict:
-    """Valida il config dell'utente e lo completa con i default."""
     raw = raw or {}
     if not isinstance(raw, dict):
         raise SystemExit("Il config deve essere un dizionario YAML.")
@@ -78,7 +60,7 @@ def load_config(raw: dict | None) -> dict:
     for key in ("epochs", "learning_rate"):
         if key not in config:
             continue
-        # PyYAML legge "1e-4" come stringa (YAML 1.1 vuole "1.0e-4"): lo accettiamo comunque.
+        # PyYAML (YAML 1.1) parses "1e-4" as a string; accept it anyway.
         try:
             config[key] = float(config[key]) if isinstance(config[key], str) else config[key]
         except ValueError:
@@ -108,7 +90,7 @@ def mlx_config(config: dict, model_path: Path, data_dir: Path, output: Path, ite
         "train": True,
         "data": str(data_dir),
         "fine_tune_type": "lora",
-        "mask_prompt": True,  # la loss si calcola solo sulla risposta (l'etichetta)
+        "mask_prompt": True,  # loss on the answer (the label) only
         "num_layers": config["num_layers"],
         "batch_size": config["batch_size"],
         "iters": iters,
@@ -126,7 +108,7 @@ def mlx_config(config: dict, model_path: Path, data_dir: Path, output: Path, ite
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description="Fine-tuning LoRA con mlx_lm di un modello su un dataset scaricato.")
     parser.add_argument("--model", required=True, help="nome del modello in oMLX (o cartella del modello)")
     parser.add_argument("--dataset-name", required=True, help="nome locale dato a download.sh")
     parser.add_argument("--config", required=True, type=Path, help="file YAML con i parametri del training")

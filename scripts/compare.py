@@ -1,12 +1,3 @@
-"""Confronta gli scenari valutati in una tabella prima/dopo.
-
-Uso:
-    uv run scripts/compare.py                           # tutti i risultati, in ordine di esecuzione
-    uv run scripts/compare.py base-full ft-full ft-minimal
-
-La colonna Δ di ogni scenario è la differenza rispetto al primo (la baseline).
-"""
-
 import argparse
 import json
 from pathlib import Path
@@ -18,7 +9,7 @@ from common import RESULTS_DIR
 
 console = Console()
 
-# (chiave, etichetta, formato, più alto è meglio)
+# (key, label, format, higher is better)
 METRICS = [
     ("format_ok", "Formattate correttamente", "pct", True),
     ("accuracy", "Corrette", "pct", True),
@@ -55,7 +46,7 @@ def fmt_delta(delta: float, kind: str, higher_is_better: bool) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description="Confronta i riepiloghi in results/; le colonne Δ sono la differenza dal primo.")
     parser.add_argument("names", nargs="*", help="scenari da confrontare (default: tutti)")
     args = parser.parse_args()
 

@@ -8,7 +8,6 @@ from evaluate import check_adapter, run_name, score, summary_path
 
 def test_score_normalizes_both_sides():
     labels = {"positive", "very negative"}
-    # prima del fix l'etichetta attesa non veniva normalizzata: "Positive" non era mai corretta
     assert score("Positive.", "Positive", labels) == (True, True)
     assert score("very negative", "Very Negative", labels) == (True, True)
     assert score("negative", "Positive", labels) == (False, False)

@@ -14,7 +14,7 @@ def test_label_column_prefers_classlabel():
 
 
 def test_label_column_skips_int_without_names():
-    # mteb/banking77: "label" è un intero senza nomi, "label_text" è la stringa giusta
+    # mteb/banking77: "label" is an unnamed int, "label_text" holds the names
     assert pick_label_column(BANKING) == "label_text"
 
 
@@ -33,7 +33,7 @@ def test_label_column_none_found():
 def test_text_column():
     assert pick_text_column(BANKING, "label_text") == "text"
     f = Features({"premise": Value("string"), "label": ClassLabel(names=["a", "b"])})
-    assert pick_text_column(f, "label") == "premise"  # unica colonna di testo
+    assert pick_text_column(f, "label") == "premise"
     f = Features({"premise": Value("string"), "hypothesis": Value("string"), "label": ClassLabel(names=["a", "b"])})
     with pytest.raises(SystemExit, match="--text-column"):
         pick_text_column(f, "label")

@@ -1,25 +1,16 @@
-# Parametri del fine-tuning LoRA, letti da fine-tune.sh --config.
-# Modello, dataset e cartella di output si passano da riga di comando.
-
-prompt_type: minimal      # prompt degli esempi di training: minimal | full
-epochs: 1                 # passate sul train; in alternativa "iters: <n>" (non entrambi)
-batch_size: 8             # esempi per iterazione
-learning_rate: 1.0e-4     # se la loss oscilla, abbassalo
-num_layers: 16            # layer adattati (-1 = tutti)
+prompt_type: minimal      # minimal | full
+epochs: 1                 # or iters: <n>, not both
+batch_size: 8
+learning_rate: 1.0e-4
+num_layers: 16            # -1 = all layers
 lora:
-  rank: 8                 # capacità dell'adapter
+  rank: 8
   scale: 20.0
   dropout: 0.0
-max_seq_length: 1024      # esempi più lunghi vengono troncati
+max_seq_length: 1024
 seed: 0
-
-steps_per_report: 50      # ogni quante iterazioni stampare la train loss
-steps_per_eval: 200       # ogni quante iterazioni calcolare la val loss
-save_every: 200           # ogni quante iterazioni salvare un checkpoint
-val_batches: -1           # batch di validation per ogni valutazione (-1 = tutti)
-
-# Opzioni di mlx_lm lora passate così come sono, per esempio:
-#   grad_checkpoint: true          # meno memoria, training più lento (modelli grandi)
-#   grad_accumulation_steps: 4
-#   lr_schedule: {name: cosine_decay, warmup: 100, arguments: [1.0e-4, 1000, 1.0e-6]}
-mlx_lm: {}
+steps_per_report: 50
+steps_per_eval: 200
+save_every: 200
+val_batches: -1           # -1 = whole validation set
+mlx_lm: {}                # passed through to mlx_lm lora, e.g. {grad_checkpoint: true}

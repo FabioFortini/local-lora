@@ -1,8 +1,0 @@
-# Prova veloce della pipeline: poche iterazioni, nessun checkpoint intermedio.
-prompt_type: minimal
-iters: 30
-batch_size: 4
-steps_per_report: 10
-steps_per_eval: 30
-save_every: 30
-val_batches: 5

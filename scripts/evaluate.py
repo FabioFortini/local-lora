@@ -1,20 +1,3 @@
-"""Valuta un modello installato in oMLX, base o con adapter LoRA, sul test set di un dataset.
-
-Uso:
-    ./evaluate.sh --model Qwen2.5-0.5B-Instruct-4bit --dataset-name banking77 \\
-                  --prompt-type full --output results/base-full.jsonl
-    ./evaluate.sh --model Qwen2.5-0.5B-Instruct-4bit --dataset-name banking77 \\
-                  --adapter adapters/qwen05-banking77 \\
-                  --prompt-type minimal --output results/ft-minimal.jsonl
-    # iterazione veloce su un sottoinsieme: aggiungi --limit 200
-
-Salva:
-    <output>                 una riga per esempio (risposta, token, latenza, esito)
-    <output>.summary.json    le metriche aggregate (al posto di .jsonl, se l'output finisce così)
-
-Se i file esistono vengono sovrascritti.
-"""
-
 import argparse
 import json
 import random
@@ -42,7 +25,7 @@ def run_name(output: Path) -> str:
 
 
 def score(answer: str, expected: str, label_set: set[str]) -> tuple[bool, bool]:
-    """(formattata, corretta): la normalizzazione vale per entrambi i lati."""
+    """(format_ok, correct), normalizing both the answer and the expected label."""
     pred = normalize(answer)
     return pred in label_set, pred == normalize(expected)
 
@@ -101,7 +84,7 @@ def print_summary(s: dict, rows: list[dict]) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description="Valuta un modello, base o con adapter LoRA, su un dataset scaricato.")
     parser.add_argument("--model", required=True, help="nome del modello in oMLX (o cartella del modello)")
     parser.add_argument("--dataset-name", required=True, help="nome locale dato a download.sh")
     parser.add_argument("--prompt-type", required=True, choices=PROMPT_TYPES,
@@ -123,14 +106,14 @@ def main() -> None:
     system = dataset.system_prompt(args.prompt_type)
     examples = dataset.split(args.split)
     if args.limit:
-        # Gli split possono essere ordinati per etichetta: campioniamo per averle tutte.
+        # Splits may be sorted by label: sample to cover all of them.
         examples = random.Random(args.seed).sample(examples, min(args.limit, len(examples)))
 
     console.print(f"Modello: [bold]{args.model}[/]  adapter: [bold]{args.adapter or '-'}[/]  "
                   f"dataset: [bold]{dataset.name}[/]  prompt: [bold]{args.prompt_type}[/]")
     warn_if_omlx_running(console)
 
-    from mlx_lm import load, stream_generate  # import lento: dopo la validazione degli argomenti
+    from mlx_lm import load, stream_generate  # slow import, deferred until arguments are validated
 
     model, tokenizer = load(str(model_path), adapter_path=str(args.adapter) if args.adapter else None)
 
@@ -144,7 +127,7 @@ def main() -> None:
 
             start = time.perf_counter()
             answer, last = "", None
-            # Nessun sampler: decoding greedy, deterministico.
+            # No sampler: greedy, deterministic decoding.
             for last in stream_generate(model, tokenizer, prompt, max_tokens=args.max_tokens):
                 answer += last.text
             latency = time.perf_counter() - start

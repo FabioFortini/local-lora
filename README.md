@@ -1,9 +1,9 @@
 # Fine-tuning LoRA di modelli locali
 
-Script per misurare un modello installato in oMLX, addestrarlo con
-LoRA su un dataset di classificazione scaricato da Hugging Face e misurarlo di nuovo. Inferenza e
-training usano `mlx-lm` in processo, con decoding greedy. Ogni dataset scaricato ha un nome locale,
-quindi se ne possono tenere più di uno.
+Script per misurare un modello installato in oMLX, addestrarlo con LoRA su un dataset di
+classificazione di Hugging Face e misurarlo di nuovo. Inferenza e training usano `mlx-lm` in
+processo, con decoding greedy. Ogni dataset scaricato ha un nome locale, quindi se ne possono tenere
+più di uno.
 
 ## Flusso
 
@@ -19,15 +19,20 @@ quindi se ne possono tenere più di uno.
 ./fine-tune.sh --model Qwen2.5-0.5B-Instruct-4bit --dataset-name banking77 \
                --config configs/lora-base.yaml --output adapters/qwen05-banking77
 
-# 4. misurare il modello addestrato
+# 4. misurare il modello addestrato, con lo stesso prompt della baseline e con quello breve
+./evaluate.sh --model Qwen2.5-0.5B-Instruct-4bit --dataset-name banking77 \
+              --adapter adapters/qwen05-banking77 \
+              --prompt-type full --output results/ft-full.jsonl
 ./evaluate.sh --model Qwen2.5-0.5B-Instruct-4bit --dataset-name banking77 \
               --adapter adapters/qwen05-banking77 \
               --prompt-type minimal --output results/ft-minimal.jsonl
+
+# 5. confrontare
+uv run scripts/compare.py base-full ft-full ft-minimal
 ```
 
-Tutti i comandi hanno `--help` e si possono lanciare da qualsiasi cartella. Per una prova veloce
-aggiungi `--limit 200` alle valutazioni e usa `--config configs/smoke.yaml` per il training.
-La guida passo per passo è in [GUIDA.md](GUIDA.md).
+Tutti i comandi hanno `--help` e si possono lanciare da qualsiasi cartella. Per iterare in fretta
+aggiungi `--limit 200` alle valutazioni e usa un config con `iters: 300`.
 
 ## I comandi
 
@@ -39,68 +44,70 @@ La guida passo per passo è in [GUIDA.md](GUIDA.md).
 
 **`--model`** è il nome di un modello installato in oMLX: quello della cartella
 (`Qwen2.5-0.5B-Instruct-4bit`) o il percorso completo (`mlx-community/Qwen2.5-0.5B-Instruct-4bit`).
-Le cartelle si leggono da `~/.omlx/settings.json`. Il server oMLX non deve essere attivo; se lo è,
-gli script lo segnalano, perché il modello occuperebbe memoria due volte.
+Le cartelle si leggono da `~/.omlx/settings.json`; se il nome non viene trovato, lo script elenca i
+modelli installati. Il server oMLX non deve essere attivo, e se lo è gli script lo segnalano, perché
+il modello occuperebbe memoria due volte.
 
-**`download.sh`** riconosce da solo le colonne di testo e di etichetta, le mostra a schermo e
-ricava dal train gli split mancanti (prima il test, poi il validation). Se la scelta delle
-colonne è sbagliata si corregge con `--text-column` e `--label-column`.
+**`download.sh`** riconosce da solo le colonne di testo e di etichetta e le mostra a schermo: se
+sono sbagliate si correggono con `--text-column` e `--label-column`. Gli split mancanti si ricavano
+dal train, prima il test e poi il validation, quindi il test non viene mai visto in training. Con lo
+stesso `--seed` il comando rigenera file identici.
 
 **`--prompt-type`** sceglie il system prompt: `full` contiene l'elenco delle etichette, `minimal`
-solo un'istruzione breve. I due testi sono in `datasets/<nome>/prompts.yaml`, generati al download
-con una formulazione neutra da adattare al dominio.
+solo un'istruzione breve. I testi stanno in `datasets/<nome>/prompts.yaml`, generati con una
+formulazione neutra: adattarli al dominio di solito migliora la baseline.
 
-**`--adapter`** carica un adapter prodotto da `fine-tune.sh`. Lo script controlla nel suo
-`manifest.json` che sia stato addestrato sullo stesso modello, e avvisa se è stato addestrato su
-un altro dataset.
+**`--adapter`** carica un adapter prodotto da `fine-tune.sh`, dopo aver controllato nel suo
+`manifest.json` che sia stato addestrato sullo stesso modello.
 
 ## Il config del training
 
-Il file passato a `--config` sceglie il prompt degli esempi di training e la durata. Le epoche
-diventano iterazioni in base alla dimensione del train (`epochs × esempi / batch_size`). Esempio
-completo e commentato in [`configs/lora-base.yaml`](configs/lora-base.yaml):
+[`configs/lora-base.yaml`](configs/lora-base.yaml) contiene i valori di partenza. Le epoche
+diventano iterazioni in base alla dimensione del train (`epochs × esempi / batch_size`), e le chiavi
+sconosciute vengono rifiutate.
 
-```yaml
-prompt_type: minimal      # prompt degli esempi di training: minimal | full
-epochs: 1                 # oppure iters: <n>, non entrambi
-batch_size: 8
-learning_rate: 1.0e-4
-num_layers: 16
-lora: {rank: 8, scale: 20.0, dropout: 0.0}
-max_seq_length: 1024
-mlx_lm: {}                # opzioni di mlx_lm lora passate così come sono
-```
+| Parametro | Default | Effetto |
+|---|---|---|
+| `prompt_type` | minimal | prompt degli esempi di training; `full` rende il training circa 10 volte più lento |
+| `epochs` / `iters` | 1 epoca | più passate sui dati, ma più rischio di overfitting |
+| `batch_size` | 8 | esempi per iterazione |
+| `learning_rate` | 1.0e-4 | se la loss oscilla, abbassalo (scritto con il punto, `1.0e-4`) |
+| `lora.rank` | 8 | capacità dell'adapter |
+| `num_layers` | 16 | quanti layer adattare (`-1` = tutti) |
+| `mlx_lm` | `{}` | opzioni passate così come sono a `mlx_lm lora`, per esempio `grad_checkpoint: true` |
 
-Le chiavi sconosciute vengono rifiutate, così un errore di battitura non passa inosservato.
+Nel log del training contano due righe: `Train loss` ogni `steps_per_report` iterazioni e `Val loss`
+ogni `steps_per_eval`. Se la val loss scende e si stabilizza va tutto bene; se la train loss continua
+a scendere mentre la val loss risale, è overfitting e conviene ridurre le epoche. Le righe
+`Calculating loss...` sono la barra di avanzamento della validazione e si possono ignorare.
 
 ## Struttura delle cartelle
 
 ```
-datasets/<nome>/
-  manifest.json          sorgente, colonne scelte, split e loro origine, seed
-  labels.json            le etichette
-  prompts.yaml           i prompt minimal e full, modificabili
-  raw/{train,valid,test}.jsonl
-adapters/<nome>/
-  manifest.json          modello, dataset, prompt e config usati
-  train_config.yaml      configurazione completa passata a mlx_lm lora
-  data/{train,valid}.jsonl   esempi in formato chat
-  adapters.safetensors   l'adapter finale, più i checkpoint intermedi
-configs/                 config di training
-results/                 output delle valutazioni (consigliato, non obbligatorio)
+datasets/<nome>/          manifest.json, labels.json, prompts.yaml, raw/{train,valid,test}.jsonl
+adapters/<nome>/          manifest.json, train_config.yaml, data/, adapters.safetensors e checkpoint
+configs/                  config di training
+results/                  output delle valutazioni
 ```
 
-`evaluate.sh` scrive le predizioni nel file `--output` e le metriche accanto, con suffisso
-`.summary.json` al posto di `.jsonl`. `scripts/compare.py` legge i riepiloghi che stanno
-direttamente in `results/`.
+`datasets/`, `adapters/` e `results/` non sono in git: si rigenerano con i comandi.
+`evaluate.sh` scrive le predizioni nel file `--output` e le metriche accanto, con `.summary.json` al
+posto di `.jsonl`. `compare.py` legge i riepiloghi che stanno direttamente in `results/`.
 
 ## Metriche
 
-- **Formattate correttamente**: la risposta, ripulita da spazi, virgolette e punto finale e portata
-  in minuscolo, è una delle etichette.
-- **Corrette**: formattata e uguale all'etichetta attesa, normalizzata allo stesso modo.
-- **Token**: media per richiesta, separata in prompt e generati.
-- **Latenza**: tempo medio per richiesta, prompt più generazione.
+| Metrica | Significato |
+|---|---|
+| Formattate correttamente | la risposta, ripulita da spazi, virgolette e punto finale e portata in minuscolo, è una delle etichette |
+| Corrette | formattata e uguale all'etichetta attesa, normalizzata allo stesso modo |
+| Token di prompt e generati | media per richiesta |
+| Latenza | tempo medio per richiesta, prompt più generazione |
+
+## Test
+
+```bash
+uv run pytest
+```
 
 ## Limiti noti
 
