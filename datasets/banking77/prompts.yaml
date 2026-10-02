@@ -1,0 +1,11 @@
+# Prompt di sistema per questo dataset. {labels} viene sostituito con l'elenco delle etichette,
+# una per riga. download.sh non lo sovrascrive (salvo --overwrite): modificalo liberamente.
+# Questi sono i prompt originali dell'esperimento banking77, usati da adapters/banking77.
+minimal: >-
+  Classify the banking customer message into its intent label.
+  Answer with the label only.
+full: |-
+  You are a banking customer support classifier. Classify the customer message into exactly one of the following intent labels:
+  {labels}
+
+  Answer with the label only, exactly as written above, with no other text.

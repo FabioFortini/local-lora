@@ -1,6 +1,6 @@
 model: /Users/fabiofortini/.omlx/models/mlx-community/Qwen2.5-0.5B-Instruct-4bit
 train: true
-data: /Users/fabiofortini/localLLM/data/lora
+data: /Users/fabiofortini/localLLM/adapters/banking77/data
 fine_tune_type: lora
 mask_prompt: true
 num_layers: 16

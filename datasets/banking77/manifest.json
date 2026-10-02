@@ -1,0 +1,32 @@
+{
+  "name": "banking77",
+  "task": "classification",
+  "source": "mteb/banking77",
+  "subset": null,
+  "revision": null,
+  "text_column": "text",
+  "label_column": "label_text",
+  "splits": {
+    "train": {
+      "n": 8994,
+      "from": "train"
+    },
+    "valid": {
+      "n": 999,
+      "from": "train"
+    },
+    "test": {
+      "n": 3076,
+      "from": "test"
+    }
+  },
+  "dropped": {
+    "train": 0,
+    "test": 0
+  },
+  "num_labels": 77,
+  "valid_ratio": 0.1,
+  "test_ratio": 0.1,
+  "seed": 42,
+  "downloaded_at": "2026-10-02T10:06:24+00:00"
+}

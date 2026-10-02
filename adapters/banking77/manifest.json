@@ -1,0 +1,34 @@
+{
+  "model": "Qwen2.5-0.5B-Instruct-4bit",
+  "model_path": "/Users/fabiofortini/.omlx/models/mlx-community/Qwen2.5-0.5B-Instruct-4bit",
+  "dataset": "banking77",
+  "dataset_source": "mteb/banking77",
+  "prompt_type": "minimal",
+  "system_prompt": "Classify the banking customer message into its intent label. Answer with the label only.",
+  "config_file": null,
+  "config": {
+    "prompt_type": "minimal",
+    "iters": 1200,
+    "batch_size": 8,
+    "learning_rate": 0.0001,
+    "num_layers": 16,
+    "lora": {
+      "rank": 8,
+      "scale": 20.0,
+      "dropout": 0.0
+    },
+    "max_seq_length": 1024,
+    "seed": 0,
+    "steps_per_report": 50,
+    "steps_per_eval": 200,
+    "save_every": 200,
+    "val_batches": -1,
+    "mlx_lm": {}
+  },
+  "n_train": 8994,
+  "n_valid": 999,
+  "iters": 1200,
+  "started_at": null,
+  "completed_at": "2026-09-25T13:54:00+00:00",
+  "note": "Manifest ricostruito il 2026-10-02 da train_config.yaml e finetune.log (adapter addestrato prima della versione generica)."
+}

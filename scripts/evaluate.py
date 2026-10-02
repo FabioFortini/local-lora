@@ -1,15 +1,18 @@
-"""Valuta il modello (base o con adapter LoRA) sul test set di banking77.
+"""Valuta un modello installato in oMLX, base o con adapter LoRA, sul test set di un dataset.
 
 Uso:
-    uv run scripts/evaluate.py --name base-full --prompt full
-    uv run scripts/evaluate.py --name ft-full --prompt full --adapter adapters/banking77
-    uv run scripts/evaluate.py --name ft-minimal --prompt minimal --adapter adapters/banking77
-    # iterazione veloce su un sottoinsieme:
-    uv run scripts/evaluate.py --name base-full --prompt full --limit 200
+    ./evaluate.sh --model Qwen2.5-0.5B-Instruct-4bit --dataset-name banking77 \\
+                  --prompt-type full --output results/base-full.jsonl
+    ./evaluate.sh --model Qwen2.5-0.5B-Instruct-4bit --dataset-name banking77 \\
+                  --adapter adapters/qwen05-banking77 \\
+                  --prompt-type minimal --output results/ft-minimal.jsonl
+    # iterazione veloce su un sottoinsieme: aggiungi --limit 200
 
 Salva:
-    results/<name>.jsonl         una riga per esempio (risposta, token, latenza, esito)
-    results/<name>.summary.json  le metriche aggregate lette da compare.py
+    <output>                 una riga per esempio (risposta, token, latenza, esito)
+    <output>.summary.json    le metriche aggregate (al posto di .jsonl, se l'output finisce così)
+
+Se i file esistono vengono sovrascritti.
 """
 
 import argparse
@@ -17,15 +20,46 @@ import json
 import random
 import time
 from collections import Counter
+from pathlib import Path
 
-from mlx_lm import load, stream_generate
 from rich.console import Console
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeRemainingColumn
 from rich.table import Table
 
-from common import DEFAULT_MODEL, RAW_DIR, RESULTS_DIR, build_messages, load_labels, normalize, read_jsonl, write_jsonl
+from common import (PROMPT_TYPES, build_messages, load_dataset_dir, normalize, read_adapter_manifest,
+                    resolve_model, warn_if_omlx_running, write_jsonl)
 
 console = Console()
+
+
+def summary_path(output: Path) -> Path:
+    stem = output.name[: -len(".jsonl")] if output.name.endswith(".jsonl") else output.name
+    return output.with_name(f"{stem}.summary.json")
+
+
+def run_name(output: Path) -> str:
+    return output.name[: -len(".jsonl")] if output.name.endswith(".jsonl") else output.stem
+
+
+def score(answer: str, expected: str, label_set: set[str]) -> tuple[bool, bool]:
+    """(formattata, corretta): la normalizzazione vale per entrambi i lati."""
+    pred = normalize(answer)
+    return pred in label_set, pred == normalize(expected)
+
+
+def check_adapter(adapter: Path, model_path: Path, dataset: str) -> None:
+    if not (adapter / "adapters.safetensors").exists():
+        raise SystemExit(f"{adapter}/adapters.safetensors non trovato: non è la cartella di un adapter.")
+    manifest = read_adapter_manifest(adapter)
+    if manifest is None:
+        console.print(f"[yellow]{adapter} non ha un manifest.json: nessun controllo di compatibilità.[/]")
+        return
+    if Path(manifest["model_path"]) != model_path:
+        raise SystemExit(f"L'adapter è stato addestrato su {manifest['model']} ({manifest['model_path']}), "
+                         f"non su {model_path}.")
+    if manifest.get("dataset") != dataset:
+        console.print(f"[yellow]L'adapter è stato addestrato su {manifest.get('dataset')!r}, "
+                      f"lo stai valutando su {dataset!r}.[/]")
 
 
 def summarize(rows: list[dict], meta: dict) -> dict:
@@ -68,35 +102,45 @@ def print_summary(s: dict, rows: list[dict]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--name", required=True, help="nome dello scenario, usato per i file in results/")
-    parser.add_argument("--prompt", choices=["full", "minimal"], default="full",
-                        help="full = system prompt con le 77 etichette; minimal = solo istruzione breve")
-    parser.add_argument("--adapter", default=None, help="cartella dell'adapter LoRA (omessa = modello base)")
-    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--model", required=True, help="nome del modello in oMLX (o cartella del modello)")
+    parser.add_argument("--dataset-name", required=True, help="nome locale dato a download.sh")
+    parser.add_argument("--prompt-type", required=True, choices=PROMPT_TYPES,
+                        help="full = system prompt con l'elenco delle etichette; minimal = solo istruzione breve")
+    parser.add_argument("--output", required=True, type=Path, help="file .jsonl delle predizioni")
+    parser.add_argument("--adapter", type=Path, default=None, help="cartella dell'adapter LoRA (omessa = modello base)")
     parser.add_argument("--split", default="test", choices=["test", "valid"])
     parser.add_argument("--limit", type=int, default=None, help="valuta solo N esempi (campione casuale fisso)")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max-tokens", type=int, default=32)
     args = parser.parse_args()
 
-    labels = load_labels()
-    label_set = set(labels)
-    examples = read_jsonl(RAW_DIR / f"{args.split}.jsonl")
+    dataset = load_dataset_dir(args.dataset_name)
+    model_path = resolve_model(args.model)
+    if args.adapter:
+        check_adapter(args.adapter, model_path, dataset.name)
+
+    label_set = {normalize(label) for label in dataset.labels}
+    system = dataset.system_prompt(args.prompt_type)
+    examples = dataset.split(args.split)
     if args.limit:
-        # Il test è ordinato per etichetta: campioniamo per avere tutte le classi.
+        # Gli split possono essere ordinati per etichetta: campioniamo per averle tutte.
         examples = random.Random(args.seed).sample(examples, min(args.limit, len(examples)))
 
-    console.print(f"Modello: [bold]{args.model}[/]  adapter: [bold]{args.adapter or '-'}[/]  prompt: [bold]{args.prompt}[/]")
-    model, tokenizer = load(args.model, adapter_path=args.adapter)
+    console.print(f"Modello: [bold]{args.model}[/]  adapter: [bold]{args.adapter or '-'}[/]  "
+                  f"dataset: [bold]{dataset.name}[/]  prompt: [bold]{args.prompt_type}[/]")
+    warn_if_omlx_running(console)
+
+    from mlx_lm import load, stream_generate  # import lento: dopo la validazione degli argomenti
+
+    model, tokenizer = load(str(model_path), adapter_path=str(args.adapter) if args.adapter else None)
 
     rows = []
     progress = Progress(TextColumn("{task.description}"), BarColumn(), MofNCompleteColumn(),
                         TextColumn("acc {task.fields[acc]}"), TimeRemainingColumn(), console=console)
     with progress:
-        task = progress.add_task(args.name, total=len(examples), acc="-")
+        task = progress.add_task(run_name(args.output), total=len(examples), acc="-")
         for ex in examples:
-            messages = build_messages(ex["text"], args.prompt, labels)
-            prompt = tokenizer.apply_chat_template(messages, add_generation_prompt=True)
+            prompt = tokenizer.apply_chat_template(build_messages(ex["text"], system), add_generation_prompt=True)
 
             start = time.perf_counter()
             answer, last = "", None
@@ -105,13 +149,13 @@ def main() -> None:
                 answer += last.text
             latency = time.perf_counter() - start
 
-            pred = normalize(answer)
+            format_ok, correct = score(answer, ex["label"], label_set)
             rows.append({
                 "text": ex["text"],
                 "label": ex["label"],
                 "answer": answer,
-                "format_ok": pred in label_set,
-                "correct": pred == ex["label"],
+                "format_ok": format_ok,
+                "correct": correct,
                 "prompt_tokens": last.prompt_tokens,
                 "generation_tokens": last.generation_tokens,
                 "latency_s": latency,
@@ -119,13 +163,14 @@ def main() -> None:
             acc = sum(r["correct"] for r in rows) / len(rows)
             progress.update(task, advance=1, acc=f"{acc:.1%}")
 
-    meta = {"name": args.name, "prompt": args.prompt, "adapter": args.adapter,
-            "model": args.model, "split": args.split, "limit": args.limit}
+    meta = {"name": run_name(args.output), "dataset": dataset.name, "prompt": args.prompt_type,
+            "adapter": str(args.adapter) if args.adapter else None, "model": args.model,
+            "model_path": str(model_path), "split": args.split, "limit": args.limit}
     summary = summarize(rows, meta)
-    RESULTS_DIR.mkdir(exist_ok=True)
-    write_jsonl(RESULTS_DIR / f"{args.name}.jsonl", rows)
-    (RESULTS_DIR / f"{args.name}.summary.json").write_text(json.dumps(summary, indent=2))
+    write_jsonl(args.output, rows)
+    summary_path(args.output).write_text(json.dumps(summary, indent=2, ensure_ascii=False))
     print_summary(summary, rows)
+    console.print(f"Salvati {args.output} e {summary_path(args.output)}")
 
 
 if __name__ == "__main__":
