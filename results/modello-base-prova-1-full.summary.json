@@ -1,0 +1,15 @@
+{
+  "name": "modello-base-prova-1-full",
+  "prompt": "full",
+  "adapter": null,
+  "model": "/Users/fabiofortini/.omlx/models/mlx-community/Qwen2.5-0.5B-Instruct-4bit",
+  "split": "test",
+  "limit": null,
+  "n": 3076,
+  "format_ok": 0.752925877763329,
+  "accuracy": 0.21001300390117036,
+  "prompt_tokens": 448.611833550065,
+  "generation_tokens": 4.9255526657997395,
+  "total_tokens": 453.5373862158648,
+  "latency_s": 0.10448127960826264
+}

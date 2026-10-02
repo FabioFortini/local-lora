@@ -1,0 +1,15 @@
+{
+  "name": "modello-ft-prova-1-full",
+  "prompt": "minimal",
+  "adapter": "adapters/banking77",
+  "model": "/Users/fabiofortini/.omlx/models/mlx-community/Qwen2.5-0.5B-Instruct-4bit",
+  "split": "test",
+  "limit": null,
+  "n": 3076,
+  "format_ok": 0.9798439531859557,
+  "accuracy": 0.8702860858257477,
+  "prompt_tokens": 42.61183355006502,
+  "generation_tokens": 4.989921976592978,
+  "total_tokens": 47.601755526657996,
+  "latency_s": 0.09858634656368451
+}
