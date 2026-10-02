@@ -54,8 +54,32 @@ dal train, prima il test e poi il validation, quindi il test non viene mai visto
 stesso `--seed` il comando rigenera file identici.
 
 **`--prompt-type`** sceglie il system prompt: `full` contiene l'elenco delle etichette, `minimal`
-solo un'istruzione breve. I testi stanno in `datasets/<nome>/prompts.yaml`, generati con una
-formulazione neutra: adattarli al dominio di solito migliora la baseline.
+solo un'istruzione breve. I testi stanno in `datasets/<nome>/prompts.yaml`.
+
+## I prompt di un dataset
+
+Dopo aver scaricato un dataset nuovo, scrivi un `prompts.yaml` adatto al suo dominio prima di
+misurare la baseline. `download.sh` genera due prompt neutri, uguali per ogni dataset («Classify the
+text into its label»), mentre un prompt che dice al modello di cosa si parla di solito migliora la
+baseline. Per banking77, per esempio:
+
+```yaml
+# {labels} is replaced with the label list, one per line. download.sh keeps edits unless --overwrite.
+minimal: >-
+  Classify the banking customer message into its intent label.
+  Answer with the label only.
+full: |-
+  You are a banking customer support classifier. Classify the customer message into exactly one of the following intent labels:
+  {labels}
+
+  Answer with the label only, exactly as written above, with no other text.
+```
+
+Il prompt va deciso una volta e poi lasciato fermo: baseline, training e valutazioni sono
+confrontabili solo se usano lo stesso testo, e un adapter va valutato con il prompt con cui è stato
+addestrato. Per questo `prompts.yaml` è l'unico file di `datasets/` tracciato in git: chi clona il
+repository e scarica lo stesso dataset ottiene gli stessi dati e trova già i prompt giusti, che
+`download.sh` non sovrascrive.
 
 **`--adapter`** carica un adapter prodotto da `fine-tune.sh`, dopo aver controllato nel suo
 `manifest.json` che sia stato addestrato sullo stesso modello.
@@ -90,7 +114,8 @@ configs/                  config di training
 results/                  output delle valutazioni
 ```
 
-`datasets/`, `adapters/` e `results/` non sono in git: si rigenerano con i comandi.
+`datasets/`, `adapters/` e `results/` non sono in git e si rigenerano con i comandi, tranne i
+`prompts.yaml` dei dataset, che sono tracciati.
 `evaluate.sh` scrive le predizioni nel file `--output` e le metriche accanto, con `.summary.json` al
 posto di `.jsonl`. `compare.py` legge i riepiloghi che stanno direttamente in `results/`.
 

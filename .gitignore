@@ -1,6 +1,8 @@
 .idea
 __pycache__/
 .pytest_cache/
-datasets/
+datasets/**
+!datasets/**/
+!datasets/*/prompts.yaml
 adapters/
 results/
